@@ -3,8 +3,8 @@ name: build-windows
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches: ["**"]
+    tags: ["v*"]
 
 jobs:
   build:
