@@ -1,0 +1,236 @@
+"""АвтоВвод — настольное приложение.
+
+Запускает локальный сервер и открывает интерфейс в собственном окне
+(pywebview / WebView2). Сайт, который заполняется, показывается внутри
+приложения — отдельное окно браузера не открывается.
+
+Если pywebview недоступен (например, запуск из исходников на Linux),
+приложение откроется в обычном браузере.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+import socket
+import sys
+import threading
+import time
+import traceback
+import webbrowser
+from pathlib import Path
+
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("AUTOVVOD_PORT", "8765"))
+URL = f"http://{HOST}:{PORT}"
+
+FROZEN = bool(getattr(sys, "frozen", False))
+
+# В собранном приложении Chromium лежит рядом с playwright, а не в профиле.
+if FROZEN:
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
+
+
+def log_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    directory = Path(base) / "AutoVvod"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / "app.log"
+
+
+def log(message: str) -> None:
+    try:
+        with log_path().open("a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {message}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def ensure_std_streams() -> None:
+    """В оконном exe (console=False) sys.stdout/stderr = None.
+
+    uvicorn при настройке логов обращается к sys.stdout.isatty(), поэтому
+    подставляем безопасные потоки — иначе приложение падает при старте.
+    """
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            try:
+                stream: object = open(os.devnull, "w", encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                stream = io.StringIO()
+            setattr(sys, name, stream)
+
+
+def fatal(message: str) -> None:
+    log(message)
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, message, "АвтоВвод — ошибка", 0x10)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.4)
+        return sock.connect_ex((HOST, port)) == 0
+
+
+def start_server() -> threading.Thread:
+    ensure_std_streams()
+
+    import uvicorn
+
+    import server
+
+    # log_config=None — uvicorn не трогает logging и не ищет isatty у stdout.
+    config = uvicorn.Config(
+        server.app,
+        host=HOST,
+        port=PORT,
+        log_level="warning",
+        log_config=None,
+        access_log=False,
+    )
+    instance = uvicorn.Server(config)
+
+    thread = threading.Thread(target=instance.run, name="autovvod-server", daemon=True)
+    thread.start()
+    return thread
+
+
+def wait_ready(timeout: float = 60.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if port_open(PORT):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def open_window() -> bool:
+    """Показывает приложение в собственном окне. True — окно закрыто пользователем."""
+    try:
+        import webview
+    except Exception:  # noqa: BLE001
+        log("pywebview недоступен, открываю браузер:\n" + traceback.format_exc())
+        return False
+
+    webview.create_window(
+        "АвтоВвод — автоматизация ввода",
+        URL,
+        width=1440,
+        height=920,
+        min_size=(1024, 700),
+        background_color="#050505",
+        text_select=True,
+    )
+    webview.start(debug=False, private_mode=False)
+    return True
+
+
+def selftest(target: str | None = None) -> int:
+    """Проверка собранного приложения: сервер, статика, Chromium, pywebview."""
+    import json
+    import tempfile
+    import urllib.request
+
+    result: dict[str, object] = {"frozen": FROZEN}
+    ok = True
+
+    # Проверяем сценарий оконного exe: нет stdout/stderr.
+    saved_streams = (sys.stdout, sys.stderr)
+    try:
+        sys.stdout = None
+        sys.stderr = None
+        ensure_std_streams()
+        result["stdio"] = sys.stdout is not None and sys.stderr is not None
+    finally:
+        sys.stdout, sys.stderr = saved_streams
+
+    try:
+        import webview
+
+        result["webview"] = getattr(webview, "__version__", "ok")
+    except Exception as exc:  # noqa: BLE001
+        result["webview"] = f"error: {exc}"
+        ok = False
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as pw:
+            result["chromium"] = pw.chromium.executable_path
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content("<h1 id='t'>ok</h1>")
+            result["page"] = page.text_content("#t")
+            browser.close()
+    except Exception as exc:  # noqa: BLE001
+        result["playwright"] = f"error: {exc}"
+        ok = False
+
+    try:
+        if not port_open(PORT):
+            start_server()
+        result["server"] = wait_ready(45)
+        with urllib.request.urlopen(f"{URL}/", timeout=10) as resp:
+            body = resp.read(400).decode("utf-8", "ignore")
+        result["static"] = "<!DOCTYPE html>" in body
+    except Exception as exc:  # noqa: BLE001
+        result["http"] = f"error: {exc}"
+
+    ok = bool(ok and result.get("server") and result.get("static"))
+    result["ok"] = ok
+
+    path = Path(target) if target else Path(tempfile.gettempdir()) / "autovvod-selftest.json"
+    try:
+        path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+    return 0 if ok else 1
+
+
+def main() -> None:
+    ensure_std_streams()
+
+    if "--selftest" in sys.argv:
+        index = sys.argv.index("--selftest")
+        target = sys.argv[index + 1] if len(sys.argv) > index + 1 else None
+        raise SystemExit(selftest(target))
+
+    log("---- запуск ----")
+    if port_open(PORT):
+        log("порт занят: использую уже запущенный сервер")
+        thread = None
+    else:
+        thread = start_server()
+        if not wait_ready():
+            log("сервер не успел запуститься")
+
+    try:
+        closed = open_window()
+    except Exception:  # noqa: BLE001
+        log("ошибка окна:\n" + traceback.format_exc())
+        closed = False
+
+    if not closed:
+        webbrowser.open(URL)
+        try:
+            while thread is not None and thread.is_alive():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+
+    log("---- выход ----")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001
+        fatal("Не удалось запустить приложение.\n\n" + traceback.format_exc())
+        raise

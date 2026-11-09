@@ -5,8 +5,10 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import queue
 import re
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -20,9 +22,27 @@ from pydantic import BaseModel, Field
 from picker import picker
 from runner import runner
 
-BASE_DIR = Path(__file__).resolve().parent
+FROZEN = bool(getattr(sys, "frozen", False))
+
+
+def _bundle_dir() -> Path:
+    """Папка с ресурсами: рядом с исходниками или внутри собранного exe."""
+    if FROZEN:
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parent
+
+
+def _data_dir() -> Path:
+    """Папка для пользовательских данных (настроек, снимков)."""
+    if FROZEN:
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        return Path(base) / "AutoVvod"
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = _bundle_dir()
 STATIC_DIR = BASE_DIR / "static"
-CONFIGS_DIR = BASE_DIR / "configs"
+CONFIGS_DIR = _data_dir() / "configs"
 
 app = FastAPI(title="АвтоВвод")
 
