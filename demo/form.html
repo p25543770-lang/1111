@@ -2,23 +2,149 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Демо-форма заявки</title>
 <style>
-  body{font:15px/1.5 system-ui,sans-serif;background:#f6f7fb;margin:0;padding:40px}
-  .wrap{max-width:460px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;box-shadow:0 10px 30px rgba(20,30,60,.08)}
-  h1{font-size:20px;margin:0 0 6px}p.sub{color:#667;margin:0 0 20px;font-size:13px}
-  label{display:block;font-size:13px;color:#445;margin:14px 0 6px}
-  input,select,textarea{width:100%;padding:10px 12px;border:1px solid #d5dbe6;border-radius:9px;font:inherit;box-sizing:border-box}
-  button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:10px;background:#2f6fed;color:#fff;font:600 15px system-ui;cursor:pointer}
-  .result{margin-top:16px;padding:12px;border-radius:10px;background:#eaf7ee;color:#1c6b3a;font-size:13px;display:none}
-  .row2{display:flex;gap:12px}.row2>div{flex:1}
+  :root {
+    color-scheme: dark;
+    --bg: #050505;
+    --panel: #0b0b0b;
+    --line: #232323;
+    --text: #f4f4f4;
+    --muted: #8f8f8f;
+    --dim: #5c5c5c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 44px 18px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  .wrap {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 28px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tag::before { content: ""; width: 14px; height: 1px; background: #fff; }
+  h1 {
+    margin: 14px 0 6px;
+    font-size: 34px;
+    line-height: .96;
+    letter-spacing: -.03em;
+    text-transform: uppercase;
+    font-weight: 900;
+  }
+  h1 span { display: block; color: #666; }
+  p.sub { color: var(--dim); margin: 0 0 26px; font-size: 12.5px; }
+  label {
+    display: block;
+    margin: 16px 0 7px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  input, select, textarea {
+    width: 100%;
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #0d0d0d;
+    color: var(--text);
+    font: inherit;
+    outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  input::placeholder, textarea::placeholder { color: #4f4f4f; }
+  input:focus, select:focus, textarea:focus { border-color: #5a5a5a; background: #111; }
+  textarea { resize: vertical; }
+  .row2 { display: flex; gap: 12px; }
+  .row2 > div { flex: 1; min-width: 0; }
+  .agree {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    margin-top: 18px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .agree input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 1px solid #3a3a3a;
+    background: #0d0d0d;
+    display: inline-grid;
+    place-content: center;
+    flex: 0 0 auto;
+  }
+  .agree input::after {
+    content: "";
+    width: 7px;
+    height: 4px;
+    border-left: 1.5px solid #000;
+    border-bottom: 1.5px solid #000;
+    transform: rotate(-45deg) scale(0);
+  }
+  .agree input:checked { background: #fff; border-color: #fff; }
+  .agree input:checked::after { transform: rotate(-45deg) scale(1); }
+  button {
+    margin-top: 22px;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid #fff;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  button:hover { background: #d7d7d7; border-color: #d7d7d7; }
+  .result {
+    display: none;
+    margin-top: 18px;
+    padding: 13px;
+    border: 1px solid #fff;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .result.show { display: block; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Заявка на подключение</h1>
-  <p class="sub">Демо-страница для проверки автоматизации</p>
-  <form id="f" onsubmit="event.preventDefault();document.getElementById('res').style.display='block';document.getElementById('res').textContent='Отправлено: '+document.getElementById('name').value+' / '+document.getElementById('phone').value;">
+  <div class="tag">ДЕМО · ПРОВЕРКА АВТОМАТИЗАЦИИ</div>
+  <h1>ЗАЯВКА <span>НА ПОДКЛЮЧЕНИЕ</span></h1>
+  <p class="sub">Демо-страница для проверки автоматизации. Заполняется автоматически приложением «АвтоВвод».</p>
+  <form id="f" onsubmit="event.preventDefault();var r=document.getElementById('res');r.className='result show';r.textContent='Отправлено: '+document.getElementById('name').value+' / '+document.getElementById('phone').value;">
     <label for="name">Имя</label>
     <input id="name" name="name" placeholder="Ваше имя">
     <div class="row2">
@@ -37,8 +163,8 @@
     </div>
     <label for="comment">Комментарий</label>
     <textarea id="comment" name="comment" rows="2" placeholder="Дополнительно"></textarea>
-    <label style="display:flex;gap:8px;align-items:center;margin-top:14px">
-      <input type="checkbox" id="agree" name="agree" style="width:auto"> согласен на обработку данных
+    <label class="agree" for="agree" style="text-transform:none;letter-spacing:0;font-size:12px;font-family:inherit">
+      <input type="checkbox" id="agree" name="agree"> согласен на обработку данных
     </label>
     <button type="submit" id="send">Отправить заявку</button>
   </form>

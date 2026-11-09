@@ -21,9 +21,7 @@ const state = {
 function toast(msg, kind = "info") {
   const box = document.createElement("div");
   box.textContent = msg;
-  box.style.cssText = `position:fixed;left:50%;bottom:26px;transform:translateX(-50%);max-width:80vw;
-    background:${kind === "err" ? "#4a1a27" : "#16233a"};color:#e6edf7;border:1px solid #2b3d5c;
-    padding:10px 16px;border-radius:10px;font-size:13px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4)`;
+  box.className = kind === "err" ? "toast toast-err" : "toast";
   document.body.appendChild(box);
   setTimeout(() => box.remove(), 3000);
 }
