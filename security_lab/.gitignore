@@ -1,0 +1,6 @@
+report.txt
+found.txt
+__pycache__/
+build/
+dist/
+*.spec
