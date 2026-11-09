@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import socket
 import sys
@@ -45,6 +46,31 @@ def log(message: str) -> None:
         pass
 
 
+def ensure_std_streams() -> None:
+    """В оконном exe (console=False) sys.stdout/stderr = None.
+
+    uvicorn при настройке логов обращается к sys.stdout.isatty(), поэтому
+    подставляем безопасные потоки — иначе приложение падает при старте.
+    """
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            try:
+                stream: object = open(os.devnull, "w", encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                stream = io.StringIO()
+            setattr(sys, name, stream)
+
+
+def fatal(message: str) -> None:
+    log(message)
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, message, "АвтоВвод — ошибка", 0x10)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def port_open(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.4)
@@ -52,11 +78,21 @@ def port_open(port: int) -> bool:
 
 
 def start_server() -> threading.Thread:
+    ensure_std_streams()
+
     import uvicorn
 
     import server
 
-    config = uvicorn.Config(server.app, host=HOST, port=PORT, log_level="warning")
+    # log_config=None — uvicorn не трогает logging и не ищет isatty у stdout.
+    config = uvicorn.Config(
+        server.app,
+        host=HOST,
+        port=PORT,
+        log_level="warning",
+        log_config=None,
+        access_log=False,
+    )
     instance = uvicorn.Server(config)
 
     thread = threading.Thread(target=instance.run, name="autovvod-server", daemon=True)
@@ -103,6 +139,16 @@ def selftest(target: str | None = None) -> int:
     result: dict[str, object] = {"frozen": FROZEN}
     ok = True
 
+    # Проверяем сценарий оконного exe: нет stdout/stderr.
+    saved_streams = (sys.stdout, sys.stderr)
+    try:
+        sys.stdout = None
+        sys.stderr = None
+        ensure_std_streams()
+        result["stdio"] = sys.stdout is not None and sys.stderr is not None
+    finally:
+        sys.stdout, sys.stderr = saved_streams
+
     try:
         import webview
 
@@ -147,6 +193,8 @@ def selftest(target: str | None = None) -> int:
 
 
 def main() -> None:
+    ensure_std_streams()
+
     if "--selftest" in sys.argv:
         index = sys.argv.index("--selftest")
         target = sys.argv[index + 1] if len(sys.argv) > index + 1 else None
@@ -179,4 +227,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001
+        fatal("Не удалось запустить приложение.\n\n" + traceback.format_exc())
+        raise
