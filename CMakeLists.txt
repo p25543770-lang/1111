@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(password_demo LANGUAGES CXX)
+add_executable(password_demo src/main.cpp)
+target_compile_features(password_demo PRIVATE cxx_std_17)
+if(WIN32)
+  target_link_libraries(password_demo PRIVATE ws2_32)
+endif()
