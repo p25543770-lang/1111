@@ -8,10 +8,14 @@
 
 ## Скачать
 
-**Готовый архив:** [release/autovvod-1.0.zip](https://github.com/p25543770-lang/1111/raw/main/release/autovvod-1.0.zip)
+**Готовый архив (37 КБ):**
+<https://github.com/p25543770-lang/1111/raw/main/release/autovvod-1.0.zip>
 
-Резервный вариант — весь код одним архивом:
-[main.zip](https://codeload.github.com/p25543770-lang/1111/zip/refs/heads/main)
+Прямая ссылка без редиректа:
+<https://raw.githubusercontent.com/p25543770-lang/1111/main/release/autovvod-1.0.zip>
+
+Весь репозиторий одним архивом (внутри тоже есть `release/autovvod-1.0.zip`):
+<https://codeload.github.com/p25543770-lang/1111/zip/refs/heads/main>
 
 Распакуйте архив в любую папку и запустите:
 
