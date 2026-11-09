@@ -68,7 +68,7 @@
     <div class="side-foot">
       <div class="side-line"><span class="dot"></span> ЛОКАЛЬНЫЙ СЕРВЕР</div>
       <div class="side-line dim">ALT + 1…4 — РАЗДЕЛЫ</div>
-      <div class="side-line dim">ВЕРСИЯ 1.0 · 2026</div>
+      <div class="side-line dim">ВЕРСИЯ 1.2 · 2026</div>
     </div>
   </aside>
 
@@ -411,6 +411,26 @@
               <label class="inline">Повторов на строку <input type="number" id="optRepeat" value="1" min="1" step="1"></label>
               <label class="inline">Начать со строки <input type="number" id="optStart" value="1" min="1" step="1"></label>
             </div>
+
+            <div class="retry-box">
+              <div class="block-head">
+                <span class="block-idx">↻</span>
+                <h3>Повтор до изменения</h3>
+                <span class="block-line"></span>
+              </div>
+              <p class="hint">
+                Сценарий «Очистить → ввести заново → нажать»: первым шагом поставьте клик по кнопке
+                очистки, дальше — ввод полей и клик по кнопке отправки. Приложение будет повторять
+                строку, пока страница не изменится, и остановится, когда изменение появилось.
+              </p>
+              <div class="row wrap run-opts">
+                <label class="chk"><input type="checkbox" id="optRetry"> повторять, пока страница не изменится</label>
+                <label class="inline">Попыток <input type="number" id="optRetryMax" value="5" min="1" max="50" step="1"></label>
+                <label class="inline">Ждать изменения, мс <input type="number" id="optRetryWait" value="1500" min="100" step="100"></label>
+                <label class="chk"><input type="checkbox" id="optRetryStop" checked> остановиться, когда изменилось</label>
+                <label class="inline">Сравнивать <input type="text" id="optRetrySelector" placeholder="селектор (необязательно)"></label>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -571,6 +591,7 @@
               <button class="ghost small" type="button" data-ai-prompt="загрузи демо и запусти">Демо + запуск</button>
               <button class="ghost small" type="button" data-ai-prompt="сколько строк и шагов?">Показать статус</button>
               <button class="ghost small" type="button" data-ai-prompt="очисти шаги">Очистить шаги</button>
+              <button class="ghost small" type="button" data-ai-prompt="включи повтор, пока страница не изменится, и остановись при изменении">Повтор до изменения</button>
               <button class="ghost small" type="button" data-ai-prompt="что ты умеешь?">Помощь</button>
             </div>
           </div>

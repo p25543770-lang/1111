@@ -619,6 +619,11 @@ function collectConfig() {
     screenshot_on_error: el("optShot").checked,
     wait_after_row_ms: Number(el("optWait").value) || 0,
     repeat_count: Number(el("optRepeat").value) || 1,
+    retry_until_change: el("optRetry").checked,
+    retry_max: Math.max(1, Number(el("optRetryMax").value) || 5),
+    retry_wait_ms: Math.max(100, Number(el("optRetryWait").value) || 1500),
+    retry_stop_on_change: el("optRetryStop").checked,
+    retry_selector: el("optRetrySelector").value.trim(),
     start_row: Math.max(0, (Number(el("optStart").value) || 1) - 1),
     steps: state.steps.map(clean),
     pre_steps: state.preSteps.map(clean),
@@ -752,6 +757,11 @@ function saveLocal() {
       start: el("optStart").value,
       stopOnError: el("optStopOnError").checked,
       shot: el("optShot").checked,
+      retry: el("optRetry").checked,
+      retryMax: el("optRetryMax").value,
+      retryWait: el("optRetryWait").value,
+      retryStop: el("optRetryStop").checked,
+      retrySelector: el("optRetrySelector").value,
     },
   };
   try { localStorage.setItem("autoform", JSON.stringify(data)); } catch { /* переполнение */ }
@@ -776,6 +786,11 @@ function loadLocal() {
       if (d.opts.start != null) el("optStart").value = d.opts.start;
       el("optStopOnError").checked = d.opts.stopOnError !== false;
       el("optShot").checked = d.opts.shot !== false;
+      el("optRetry").checked = !!d.opts.retry;
+      if (d.opts.retryMax != null) el("optRetryMax").value = d.opts.retryMax;
+      if (d.opts.retryWait != null) el("optRetryWait").value = d.opts.retryWait;
+      el("optRetryStop").checked = d.opts.retryStop !== false;
+      if (d.opts.retrySelector != null) el("optRetrySelector").value = d.opts.retrySelector;
     }
   } catch { /* повреждённое хранилище */ }
 }
@@ -880,6 +895,11 @@ function applyConfig(cfg) {
   el("optStart").value = (cfg.start_row ?? 0) + 1;
   el("optStopOnError").checked = cfg.stop_on_error !== false;
   el("optShot").checked = cfg.screenshot_on_error !== false;
+  el("optRetry").checked = cfg.retry_until_change === true;
+  el("optRetryMax").value = cfg.retry_max ?? 5;
+  el("optRetryWait").value = cfg.retry_wait_ms ?? 1500;
+  el("optRetryStop").checked = cfg.retry_stop_on_change !== false;
+  el("optRetrySelector").value = cfg.retry_selector || "";
   renderSteps();
   saveLocal();
 }
@@ -923,7 +943,8 @@ el("modal").onclick = (e) => { if (e.target === el("modal")) closeModal(); };
 el("url").oninput = () => saveLocal();
 el("thumb").onclick = thumbClick;
 el("thumb").addEventListener("wheel", thumbWheel, { passive: false });
-["optHeadless", "optReload", "optWait", "optRepeat", "optStart", "optStopOnError", "optShot"].forEach((id) => {
+["optHeadless", "optReload", "optWait", "optRepeat", "optStart", "optStopOnError", "optShot",
+  "optRetry", "optRetryMax", "optRetryWait", "optRetryStop", "optRetrySelector"].forEach((id) => {
   el(id).onchange = saveLocal;
 });
 

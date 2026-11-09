@@ -31,15 +31,16 @@ ACTION_TYPES = {
     "clear_steps",
     "start_run",
     "stop_run",
+    "set_retry",
     "open_panel",
 }
 
 HELP = (
     "Я работаю полностью на этом компьютере. Умею: загрузить демо-данные, "
     "открыть сайт внутри приложения, разобрать вставленную таблицу, добавить шаги, "
-    "запустить или остановить ввод и показать состояние. "
+    "включить повтор до изменения страницы, запустить или остановить ввод и показать состояние. "
     "Например: «загрузи демо и запусти», «открой https://example.com/form», "
-    "«сколько строк и шагов?»."
+    "«повторяй, пока страница не изменится, и остановись при изменении», «сколько строк и шагов?»."
 )
 
 
@@ -172,9 +173,13 @@ def _system_prompt(context: dict[str, Any]) -> str:
         '- {"type": "clear_steps"}\n'
         '- {"type": "start_run"}\n'
         '- {"type": "stop_run"}\n'
+        '- {"type": "set_retry", "enabled": true, "max_attempts": 5, "wait_ms": 1500, '
+        '"stop_on_change": true, "selector": ""} — повторять строку, пока страница не изменится\n'
         '- {"type": "open_panel", "panel": "site|data|steps|run|ai"}\n'
         "Если действие не нужно — верни пустой список actions. Не выдумывай селекторы, "
-        "если пользователь их не назвал."
+        "если пользователь их не назвал. Если просят сценарий «очистить → ввести заново → нажать "
+        "и повторять, пока не изменится», включи set_retry со stop_on_change=true, а шаги добавь "
+        "только если пользователь назвал селекторы."
     )
 
 
@@ -227,6 +232,24 @@ def _clean_actions(raw: Any) -> list[dict[str, Any]]:
             if not isinstance(steps, list) or not steps:
                 continue
             action["steps"] = steps[:20]
+        elif kind == "set_retry":
+            action["enabled"] = bool(item.get("enabled", True))
+            try:
+                attempts = int(item.get("max_attempts"))
+                if attempts > 0:
+                    action["max_attempts"] = min(50, attempts)
+            except (TypeError, ValueError):
+                pass
+            try:
+                wait_ms = int(item.get("wait_ms"))
+                if wait_ms > 0:
+                    action["wait_ms"] = min(60000, wait_ms)
+            except (TypeError, ValueError):
+                pass
+            if "stop_on_change" in item:
+                action["stop_on_change"] = bool(item["stop_on_change"])
+            if isinstance(item.get("selector"), str):
+                action["selector"] = item["selector"][:200]
         elif kind == "open_panel":
             panel = str(item.get("panel") or "")
             if panel not in {"site", "data", "steps", "run", "ai"}:
@@ -269,6 +292,18 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
 
     url_match = re.search(r"https?://\S+", t)
     is_stop = any(word in low for word in ("стоп", "останов", "stop"))
+    retry_hint = any(
+        word in low
+        for word in ("повтор", "пока не изменит", "до изменени", "если изменил", "изменится")
+    )
+    if retry_hint:
+        # «остановись, когда изменится» — это не команда «стоп»
+        is_stop = False
+        retry_action: dict[str, Any] = {"type": "set_retry", "enabled": True, "stop_on_change": True}
+        attempt = re.search(r"(\d+)\s*(?:раз|попыт)", low)
+        if attempt:
+            retry_action["max_attempts"] = max(1, min(50, int(attempt.group(1))))
+        actions.append(retry_action)
     is_start = any(word in low for word in ("запуст", "старт", "start", "run")) and not is_stop
 
     if url_match:
@@ -303,10 +338,18 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
             say = "Разбираю таблицу из сообщения и добавляю строки."
         else:
             say = "Пришлите строки таблицы следующим сообщением — колонки через табуляцию, запятую или «;»."
+    elif retry_hint:
+        say = (
+            "Включаю повтор: буду выполнять строку заново, пока содержимое страницы не изменится, "
+            "и остановлюсь, как только изменение появится."
+        )
     elif any(word in low for word in ("помощ", "help", "что умеешь", "команд")):
         say = HELP
     else:
         say = HELP
+
+    if retry_hint and not say.lower().startswith("включаю повтор") and "повтор включён" not in say.lower():
+        say = (say + " Повтор включён: остановка при изменении страницы.").strip()
 
     return {"say": say, "actions": actions}
 

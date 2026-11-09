@@ -27,6 +27,7 @@
     clear_steps: "ОЧИСТИТЬ ШАГИ",
     start_run: "ЗАПУСК",
     stop_run: "СТОП",
+    set_retry: "ПОВТОР",
     open_panel: "РАЗДЕЛ",
   };
 
@@ -48,6 +49,13 @@
       site_open: typeof state !== "undefined" ? !!state.siteOpen : false,
       picking: typeof state !== "undefined" ? !!state.picking : false,
       panel: window.__vv && window.__vv.current ? window.__vv.current() : "site",
+      retry: {
+        enabled: !!(document.getElementById("optRetry") || {}).checked,
+        max_attempts: (document.getElementById("optRetryMax") || {}).value || "",
+        wait_ms: (document.getElementById("optRetryWait") || {}).value || "",
+        stop_on_change: !!(document.getElementById("optRetryStop") || {}).checked,
+        selector: (document.getElementById("optRetrySelector") || {}).value || "",
+      },
     };
   }
 
@@ -183,6 +191,28 @@
     async stop_run() {
       await stopRun();
       return { ok: true, note: "остановлено" };
+    },
+
+    async set_retry(a) {
+      const enabled = a.enabled !== false;
+      document.getElementById("optRetry").checked = enabled;
+      if (a.max_attempts) document.getElementById("optRetryMax").value = a.max_attempts;
+      if (a.wait_ms) document.getElementById("optRetryWait").value = a.wait_ms;
+      if (a.stop_on_change !== undefined) {
+        document.getElementById("optRetryStop").checked = !!a.stop_on_change;
+      }
+      if (a.selector !== undefined) {
+        document.getElementById("optRetrySelector").value = a.selector || "";
+      }
+      if (typeof saveLocal === "function") saveLocal();
+      return {
+        ok: true,
+        note:
+          "повтор до изменения: до " +
+          document.getElementById("optRetryMax").value +
+          " попыток, остановка при изменении — " +
+          (document.getElementById("optRetryStop").checked ? "да" : "нет"),
+      };
     },
 
     async open_panel(a) {

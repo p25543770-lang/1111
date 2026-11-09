@@ -788,6 +788,18 @@ table { border-collapse: collapse; width: 100%; font-size: 12px; }
 
 .run-opts { margin-top: 0; }
 
+/* ------------------------------------------------------------ повтор до изменения */
+
+.retry-box {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.retry-box .block-head { margin-bottom: 10px; }
+.retry-box .hint { margin-top: 0; margin-bottom: 14px; max-width: 760px; }
+.retry-box .run-opts { margin-top: 0; }
+.run-opts input[type=text] { max-width: 250px; }
+
 /* ------------------------------------------------------------ прогресс и журнал */
 
 .launch-row { align-items: center; gap: 14px; }

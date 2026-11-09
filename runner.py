@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import queue
 import re
@@ -159,6 +160,11 @@ class Runner:
         reload_each = bool(config.get("reload_each_row", False))
         stop_on_error = bool(config.get("stop_on_error", True))
         shoot = bool(config.get("screenshot_on_error", True))
+        retry_until = bool(config.get("retry_until_change", False))
+        retry_max = max(1, min(50, int(config.get("retry_max") or 5)))
+        retry_wait = max(0.1, int(config.get("retry_wait_ms") or 1500) / 1000)
+        retry_stop = bool(config.get("retry_stop_on_change", True))
+        retry_selector = (config.get("retry_selector") or "").strip()
         steps = config.get("steps") or []
         pre_steps = config.get("pre_steps") or []
 
@@ -170,6 +176,11 @@ class Runner:
         self._set_state("running")
         self.log(f"Старт. Строк к обработке: {self.total}")
         self.log(f"Браузер: {'без окна (headless)' if headless else 'с окном'}")
+        if retry_until:
+            self.log(
+                f"Повтор до изменения: до {retry_max} попыток, ожидание {int(retry_wait * 1000)} мс, "
+                f"сравнение: {retry_selector or 'вся страница'}"
+            )
 
         try:
             with sync_playwright() as p:
@@ -196,8 +207,20 @@ class Runner:
                     self.log("Выполняю подготовительные шаги (до первой строки)")
                     self._exec_steps(page, pre_steps, headers, [], timeout, context)
 
+                if retry_until and retry_selector:
+                    try:
+                        found = page.locator(retry_selector).count()
+                        self.log(
+                            f"Элемент для сравнения {retry_selector}: найдено {found}",
+                            "ok" if found else "warn",
+                        )
+                    except Exception:  # noqa: BLE001
+                        self.log("Не удалось проверить элемент для сравнения", "warn")
+
                 processed = 0
                 failed = 0
+                stop_after_change = False
+                last_num = 0
 
                 for idx, row in enumerate(rows):
                     if idx < start_row:
@@ -206,23 +229,24 @@ class Runner:
                         raise Stopped()
 
                     num = idx + 1
+                    last_num = num
                     self.emit({"type": "progress", "done": processed, "total": self.total, "row": num})
                     brief = self._brief(headers, row)
                     self.log(f"Строка {num}/{len(rows)}: {brief}")
 
-                    for rep in range(repeat):
+                    attempts = retry_max if retry_until else repeat
+                    changed_here = False
+
+                    for rep in range(attempts):
                         if self._stop.is_set():
                             raise Stopped()
                         if reload_each:
                             page.goto(url, wait_until="domcontentloaded")
+
+                        before = self._fingerprint(page, retry_selector) if retry_until else None
+
                         try:
                             self._exec_steps(page, steps, headers, row, timeout, context)
-                            processed += 1
-                            self.done = processed
-                            if repeat > 1:
-                                self.log(f"  повтор {rep + 1}/{repeat} — ок", "ok")
-                            else:
-                                self.log("  готово", "ok")
                         except Stopped:
                             raise
                         except Exception as exc:  # noqa: BLE001 — нужен любой сбой шага
@@ -232,9 +256,47 @@ class Runner:
                                 self._screenshot(page, num)
                             if stop_on_error:
                                 raise
-                        time.sleep(max(0, wait_after))
+                            break
 
-                self.emit({"type": "progress", "done": processed, "total": self.total, "row": len(rows)})
+                        if retry_until:
+                            # ждём, пока страница отреагирует (анимации, запросы)
+                            self._sleep(retry_wait)
+                            after = self._fingerprint(page, retry_selector)
+                            if before != after:
+                                processed += 1
+                                self.done = processed
+                                changed_here = True
+                                self.log(f"  страница изменилась на попытке {rep + 1} — готово", "ok")
+                                if not retry_stop:
+                                    self.log("  продолжаю со следующей строкой", "ok")
+                                break
+                            if rep + 1 < attempts:
+                                self.log(f"  изменений нет — повторяю ({rep + 2}/{attempts})", "warn")
+                            else:
+                                processed += 1
+                                self.done = processed
+                                self.log(f"  изменений нет за {attempts} попыток", "warn")
+                                if shoot:
+                                    self._screenshot(page, num)
+                        else:
+                            processed += 1
+                            self.done = processed
+                            if repeat > 1:
+                                self.log(f"  повтор {rep + 1}/{repeat} — ок", "ok")
+                            else:
+                                self.log("  готово", "ok")
+                            time.sleep(max(0, wait_after))
+
+                    if changed_here and retry_stop:
+                        stop_after_change = True
+                        break
+
+                self.emit({"type": "progress", "done": processed, "total": self.total, "row": last_num or len(rows)})
+                if stop_after_change:
+                    self.log("Готово: страница изменилась — выполнение остановлено", "ok")
+                    self._set_state("done")
+                    browser.close()
+                    return
                 if failed:
                     self.log(f"Готово с ошибками: успешно {processed}, сбоев {failed}", "warn")
                     self._set_state("done")
@@ -337,6 +399,19 @@ class Runner:
                 self._sleep(delay / 1000)
 
     # ---------- мелочи ----------
+
+    @staticmethod
+    def _fingerprint(page: Any, selector: str) -> str:
+        """Отпечаток страницы: URL + текст (всей страницы или выбранного элемента)."""
+        try:
+            if selector:
+                text = page.locator(selector).first.inner_text(timeout=3000)
+            else:
+                text = page.evaluate("() => (document.body ? document.body.innerText : '')")
+            raw = f"{page.url or ''}\n{text}"
+            return hashlib.sha1(raw.encode("utf-8", "ignore")).hexdigest()
+        except Exception:  # noqa: BLE001
+            return ""
 
     def _sleep(self, seconds: float) -> None:
         if seconds <= 0:
