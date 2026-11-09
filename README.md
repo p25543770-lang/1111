@@ -8,11 +8,22 @@
 
 ## Скачать
 
+### Windows 10/11 — готовый exe
+
+<https://github.com/p25543770-lang/1111/releases/latest/download/AutoVvod-windows-x64.zip>
+
+Распакуйте архив в любую папку и запустите **`AutoVvod.exe`**. Это отдельное окно
+приложения: сайт, который заполняется, открывается **внутри него**, отдельный браузер
+не запускается. Chromium для автоматизации уже лежит в сборке — ставить ничего не нужно.
+Настройки и снимки экрана сохраняются в `%LOCALAPPDATA%\AutoVvod`.
+
+> Сборка без цифровой подписи, поэтому SmartScreen может показать предупреждение:
+> «Подробнее» → «Выполнить в любом случае».
+
+### Архив с исходниками (Python 3.9+)
+
 **Готовый архив (47 КБ):**
 <https://github.com/p25543770-lang/1111/raw/main/release/autovvod-1.0.zip>
-
-Прямая ссылка без редиректа:
-<https://raw.githubusercontent.com/p25543770-lang/1111/main/release/autovvod-1.0.zip>
 
 Весь репозиторий одним архивом (внутри тоже есть `release/autovvod-1.0.zip`):
 <https://codeload.github.com/p25543770-lang/1111/zip/refs/heads/main>
@@ -23,6 +34,9 @@
 * **macOS / Linux** — `bash run.sh`.
 
 Приложение откроется в браузере по адресу <http://127.0.0.1:8765>.
+
+Исходники также запускаются в собственном окне: `pip install pywebview pythonnet`
+и затем `python desktop.py`.
 
 ---
 

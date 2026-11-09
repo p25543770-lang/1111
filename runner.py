@@ -9,13 +9,21 @@ from __future__ import annotations
 import os
 import queue
 import re
+import sys
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-BASE_DIR = Path(__file__).resolve().parent
+def _data_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        return Path(base) / "AutoVvod"
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = _data_dir()
 SHOTS_DIR = BASE_DIR / "screenshots"
 
 DEFAULT_TIMEOUT = 15000

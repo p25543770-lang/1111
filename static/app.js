@@ -927,11 +927,12 @@ el("thumb").addEventListener("wheel", thumbWheel, { passive: false });
   el(id).onchange = saveLocal;
 });
 
-// невидимый чекбокс: показывать окно браузера при выборе полей
+// невидимый чекбокс: показывать окно браузера при выборе полей.
+// По умолчанию сайт открывается только внутри приложения (headless).
 const pickWindow = document.createElement("input");
 pickWindow.type = "checkbox";
 pickWindow.id = "optPickWindow";
-pickWindow.checked = true;
+pickWindow.checked = false;
 pickWindow.style.display = "none";
 document.body.appendChild(pickWindow);
 
