@@ -49,6 +49,30 @@ jobs:
             exit 1
           }
 
+      - name: Диагностика
+        if: always()
+        shell: pwsh
+        run: |
+          function Note($title, $text) {
+            $t = $text -replace "%","%25" -replace "`r","%0D" -replace "`n","%0A"
+            Write-Host "::error title=$title::$t"
+          }
+
+          $out = Join-Path $env:RUNNER_TEMP "selftest.json"
+          if (Test-Path $out) {
+            Note "selftest" (Get-Content $out -Raw)
+          } else {
+            Note "selftest" "файл отчёта не создан"
+          }
+
+          if (Test-Path ".\dist\AutoVvod\AutoVvod.exe") {
+            Note "files" ((Get-ChildItem ".\dist\AutoVvod" -Recurse -File | Measure-Object -Property Length -Sum).Sum)
+          } else {
+            Note "files" "exe не найден"
+          }
+          $browsers = Get-ChildItem ".\dist\AutoVvod" -Recurse -Directory -Filter ".local-browsers" -ErrorAction SilentlyContinue
+          Note "browsers" ("local-browsers: " + ($browsers | Measure-Object).Count)
+
       - name: Упаковка
         shell: pwsh
         run: |
