@@ -790,15 +790,20 @@ table { border-collapse: collapse; width: 100%; font-size: 12px; }
 
 /* ------------------------------------------------------------ повтор до изменения */
 
-.retry-box {
+.retry-box,
+.agent-box {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
-.retry-box .block-head { margin-bottom: 10px; }
-.retry-box .hint { margin-top: 0; margin-bottom: 14px; max-width: 760px; }
-.retry-box .run-opts { margin-top: 0; }
+.retry-box .block-head,
+.agent-box .block-head { margin-bottom: 10px; }
+.retry-box .hint,
+.agent-box .hint { margin-top: 0; margin-bottom: 14px; max-width: 760px; }
+.retry-box .run-opts,
+.agent-box .run-opts { margin-top: 0; }
 .run-opts input[type=text] { max-width: 250px; }
+.agent-box #optAgentGoal { flex: 0 1 260px; width: 260px; max-width: 260px; }
 
 /* ------------------------------------------------------------ прогресс и журнал */
 

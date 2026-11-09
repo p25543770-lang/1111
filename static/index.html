@@ -68,7 +68,7 @@
     <div class="side-foot">
       <div class="side-line"><span class="dot"></span> ЛОКАЛЬНЫЙ СЕРВЕР</div>
       <div class="side-line dim">ALT + 1…4 — РАЗДЕЛЫ</div>
-      <div class="side-line dim">ВЕРСИЯ 1.2 · 2026</div>
+      <div class="side-line dim">ВЕРСИЯ 1.3 · 2026</div>
     </div>
   </aside>
 
@@ -431,6 +431,25 @@
                 <label class="inline">Сравнивать <input type="text" id="optRetrySelector" placeholder="селектор (необязательно)"></label>
               </div>
             </div>
+
+            <div class="retry-box agent-box">
+              <div class="block-head">
+                <span class="block-idx">✦</span>
+                <h3>ИИ-агент</h3>
+                <span class="block-line"></span>
+              </div>
+              <p class="hint">
+                После каждой попытки агент смотрит на страницу и сам решает, что делать: повторить ввод,
+                нажать «Очистить», отправить ещё раз, перезагрузить или остановиться. Нужна локальная модель
+                (Ollama или свой сервер) — без неё решения принимают встроенные правила.
+              </p>
+              <div class="row wrap run-opts">
+                <label class="chk"><input type="checkbox" id="optAgent"> вести ввод агентом</label>
+                <label class="inline">Попыток <input type="number" id="optAgentMax" value="4" min="1" max="20" step="1"></label>
+                <label class="inline">Ждать, мс <input type="number" id="optAgentWait" value="1500" min="200" step="100"></label>
+                <label class="inline">Цель <input type="text" id="optAgentGoal" placeholder="например: заявка принята"></label>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -592,6 +611,7 @@
               <button class="ghost small" type="button" data-ai-prompt="сколько строк и шагов?">Показать статус</button>
               <button class="ghost small" type="button" data-ai-prompt="очисти шаги">Очистить шаги</button>
               <button class="ghost small" type="button" data-ai-prompt="включи повтор, пока страница не изменится, и остановись при изменении">Повтор до изменения</button>
+              <button class="ghost small" type="button" data-ai-prompt="включи ИИ-агента, пусть сам решает, что делать">ИИ-агент</button>
               <button class="ghost small" type="button" data-ai-prompt="что ты умеешь?">Помощь</button>
             </div>
           </div>

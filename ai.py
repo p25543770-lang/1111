@@ -32,15 +32,17 @@ ACTION_TYPES = {
     "start_run",
     "stop_run",
     "set_retry",
+    "set_agent",
     "open_panel",
 }
 
 HELP = (
     "Я работаю полностью на этом компьютере. Умею: загрузить демо-данные, "
     "открыть сайт внутри приложения, разобрать вставленную таблицу, добавить шаги, "
-    "включить повтор до изменения страницы, запустить или остановить ввод и показать состояние. "
+    "включить повтор до изменения страницы, включить ИИ-агента (он сам решает, что делать после "
+    "каждой попытки), запустить или остановить ввод и показать состояние. "
     "Например: «загрузи демо и запусти», «открой https://example.com/form», "
-    "«повторяй, пока страница не изменится, и остановись при изменении», «сколько строк и шагов?»."
+    "«включи агента, пусть сам решает», «повторяй, пока страница не изменится», «сколько строк и шагов?»."
 )
 
 
@@ -123,28 +125,32 @@ def status() -> dict[str, Any]:
     }
 
 
-def _ollama_chat(model: str, system: str, messages: list[dict[str, str]]) -> str:
+def _ollama_chat(
+    model: str, system: str, messages: list[dict[str, str]], timeout: float = 90.0
+) -> str:
     payload = {
         "model": model,
         "stream": False,
         "messages": [{"role": "system", "content": system}] + messages,
         "options": {"temperature": 0.2, "num_ctx": 4096},
     }
-    data = _request(f"{OLLAMA_URL}/api/chat", payload, timeout=90.0)
+    data = _request(f"{OLLAMA_URL}/api/chat", payload, timeout=timeout)
     message = data.get("message") if isinstance(data, dict) else None
     if isinstance(message, dict):
         return str(message.get("content") or "")
     return ""
 
 
-def _openai_chat(model: str, system: str, messages: list[dict[str, str]]) -> str:
+def _openai_chat(
+    model: str, system: str, messages: list[dict[str, str]], timeout: float = 90.0
+) -> str:
     base = OPENAI_URL if OPENAI_URL.endswith("/v1") else f"{OPENAI_URL}/v1"
     payload = {
         "model": model,
         "temperature": 0.2,
         "messages": [{"role": "system", "content": system}] + messages,
     }
-    data = _request(f"{base}/chat/completions", payload, timeout=90.0)
+    data = _request(f"{base}/chat/completions", payload, timeout=timeout)
     choices = data.get("choices") if isinstance(data, dict) else None
     if isinstance(choices, list) and choices:
         message = choices[0].get("message") or {}
@@ -250,6 +256,22 @@ def _clean_actions(raw: Any) -> list[dict[str, Any]]:
                 action["stop_on_change"] = bool(item["stop_on_change"])
             if isinstance(item.get("selector"), str):
                 action["selector"] = item["selector"][:200]
+        elif kind == "set_agent":
+            action["enabled"] = bool(item.get("enabled", True))
+            try:
+                attempts = int(item.get("max_attempts"))
+                if attempts > 0:
+                    action["max_attempts"] = min(20, attempts)
+            except (TypeError, ValueError):
+                pass
+            try:
+                wait_ms = int(item.get("wait_ms"))
+                if wait_ms > 0:
+                    action["wait_ms"] = min(60000, wait_ms)
+            except (TypeError, ValueError):
+                pass
+            if isinstance(item.get("goal"), str):
+                action["goal"] = item["goal"][:300]
         elif kind == "open_panel":
             panel = str(item.get("panel") or "")
             if panel not in {"site", "data", "steps", "run", "ai"}:
@@ -296,7 +318,11 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
         word in low
         for word in ("повтор", "пока не изменит", "до изменени", "если изменил", "изменится")
     )
-    if retry_hint:
+    agent_hint = any(
+        word in low
+        for word in ("агент", "сам реша", "самостоятельн", "автономн", "пусть решает", "сам дума")
+    )
+    if retry_hint and not agent_hint:
         # «остановись, когда изменится» — это не команда «стоп»
         is_stop = False
         retry_action: dict[str, Any] = {"type": "set_retry", "enabled": True, "stop_on_change": True}
@@ -304,6 +330,18 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
         if attempt:
             retry_action["max_attempts"] = max(1, min(50, int(attempt.group(1))))
         actions.append(retry_action)
+    if agent_hint:
+        is_stop = False
+        agent_action: dict[str, Any] = {"type": "set_agent", "enabled": True}
+        attempt = re.search(r"(\d+)\s*(?:раз|попыт)", low)
+        if attempt:
+            agent_action["max_attempts"] = max(1, min(20, int(attempt.group(1))))
+        goal_match = re.search(r"цел[ьи]\s*[:\-—]?\s*(.+)$", t, re.I)
+        if goal_match:
+            goal_text = goal_match.group(1).strip(" .,;")
+            if goal_text:
+                agent_action["goal"] = goal_text[:300]
+        actions.append(agent_action)
     is_start = any(word in low for word in ("запуст", "старт", "start", "run")) and not is_stop
 
     if url_match:
@@ -338,6 +376,11 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
             say = "Разбираю таблицу из сообщения и добавляю строки."
         else:
             say = "Пришлите строки таблицы следующим сообщением — колонки через табуляцию, запятую или «;»."
+    elif agent_hint:
+        say = (
+            "Включаю ИИ-агента: после каждой попытки он смотрит на страницу и сам решает — "
+            "повторить, очистить, отправить ещё раз, перезагрузить или остановиться."
+        )
     elif retry_hint:
         say = (
             "Включаю повтор: буду выполнять строку заново, пока содержимое страницы не изменится, "
@@ -348,10 +391,145 @@ def _offline(text: str, context: dict[str, Any]) -> dict[str, Any]:
     else:
         say = HELP
 
-    if retry_hint and not say.lower().startswith("включаю повтор") and "повтор включён" not in say.lower():
+    if agent_hint and "агент" not in say.lower():
+        say = (say + " ИИ-агент включён: решения по попыткам принимает он.").strip()
+    elif retry_hint and "повтор" not in say.lower() and "повтор включён" not in say.lower():
         say = (say + " Повтор включён: остановка при изменении страницы.").strip()
 
     return {"say": say, "actions": actions}
+
+
+# ------------------------------------------------------------------ ИИ-агент
+
+AGENT_DECISIONS = ("next", "repeat", "clear", "submit", "reload", "stop", "fail")
+
+AGENT_LABELS = {
+    "next": "успех — следующая строка",
+    "repeat": "повторить шаги",
+    "clear": "очистить и повторить",
+    "submit": "нажать отправку ещё раз",
+    "reload": "перезагрузить страницу",
+    "stop": "остановить запуск",
+    "fail": "строка не поддалась",
+}
+
+_ERROR_HINTS = (
+    "ошиб", "неверн", "некоррект", "заполните", "обязательн", "недопустим",
+    "не может", "не удалось", "повторите", "error", "invalid", "required", "failed",
+)
+_SUCCESS_HINTS = (
+    "успеш", "сохранен", "сохранён", "принят", "отправлен", "добавлен",
+    "записан", "спасибо", "success", "saved", "created",
+)
+
+
+def _agent_offline(meta: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Встроенные решения без модели: по факту изменения и тексту страницы."""
+    attempt = int(meta.get("attempt") or 1)
+    limit = max(1, int(meta.get("max_attempts") or 4))
+    changed = bool(meta.get("changed"))
+    text = str(snapshot.get("text") or "").lower()
+    error = any(word in text for word in _ERROR_HINTS)
+
+    if changed and not error:
+        success = any(word in text for word in _SUCCESS_HINTS)
+        say = (
+            "страница сообщает об успехе — строка принята"
+            if success
+            else "страница изменилась — считаю попытку удачной"
+        )
+        return {"decision": "next", "say": say, "selector": "", "mode": "offline"}
+
+    if changed and error:
+        if attempt >= limit:
+            return {
+                "decision": "fail",
+                "say": "на странице ошибка, попытки кончились",
+                "selector": "",
+                "mode": "offline",
+            }
+        return {
+            "decision": "clear",
+            "say": "на странице ошибка — очищаю и пробую заново",
+            "selector": "",
+            "mode": "offline",
+        }
+
+    if attempt >= limit:
+        return {
+            "decision": "fail",
+            "say": f"за {limit} попыток страница не изменилась",
+            "selector": "",
+            "mode": "offline",
+        }
+    if attempt == 1:
+        return {"decision": "clear", "say": "изменений нет — очищаю и повторяю ввод", "selector": "", "mode": "offline"}
+    if attempt == 2:
+        return {"decision": "repeat", "say": "изменений нет — повторяю шаги", "selector": "", "mode": "offline"}
+    if attempt == 3:
+        return {"decision": "reload", "say": "изменений нет — перезагружаю страницу", "selector": "", "mode": "offline"}
+    return {"decision": "submit", "say": "изменений нет — нажимаю отправку ещё раз", "selector": "", "mode": "offline"}
+
+
+def _agent_prompt(meta: dict[str, Any], snapshot: dict[str, Any]) -> str:
+    goal = str(meta.get("goal") or "добиться, чтобы данные принялись").strip()
+    snap = {key: snapshot.get(key, "") for key in ("url", "title", "text", "elements")}
+    changed = "да" if meta.get("changed") else "нет"
+    return (
+        "Ты — локальный ИИ-агент приложения «АвтоВвод». Оно вводит строки таблицы в поля сайта. "
+        "После каждой попытки ты смотришь на состояние страницы и решаешь, что делать дальше.\n\n"
+        f"Цель пользователя: {goal}\n"
+        f"Текущая строка: {meta.get('row')}\n"
+        f"Попытка {meta.get('attempt')} из {meta.get('max_attempts')}. "
+        f"Страница изменилась после действий: {changed}.\n\n"
+        "Состояние страницы (JSON):\n"
+        + json.dumps(snap, ensure_ascii=False)[:3500]
+        + "\n\nВерни ТОЛЬКО JSON без markdown:\n"
+        '{"decision": "next", "selector": "", "say": "коротко по-русски"}\n'
+        "decision — одно из:\n"
+        "next — результат достигнут, переходить к следующей строке;\n"
+        "repeat — повторить шаги ввода;\n"
+        "clear — нажать кнопку очистки и повторить ввод;\n"
+        "submit — нажать кнопку отправки ещё раз, без повторного ввода;\n"
+        "reload — перезагрузить страницу и повторить ввод;\n"
+        "stop — остановить весь запуск;\n"
+        "fail — строка не поддалась, перейти к следующей.\n"
+        "selector — необязательный CSS-селектор кнопки для clear/submit, только из списка elements. "
+        "Если страница показывает ошибку, не считай это успехом. Не придумывай селекторы."
+    )
+
+
+def agent_decide(
+    meta: dict[str, Any],
+    snapshot: dict[str, Any],
+    info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Решение агента по текущей попытке: next/repeat/clear/submit/reload/stop/fail."""
+    meta = meta or {}
+    snapshot = snapshot or {}
+    info = info or status()
+    mode = info.get("mode") or "offline"
+    if mode in {"ollama", "openai"} and info.get("model"):
+        system = _agent_prompt(meta, snapshot)
+        messages = [{"role": "user", "content": "Прими решение по текущей попытке. Ответ — только JSON."}]
+        try:
+            if mode == "ollama":
+                raw = _ollama_chat(info["model"], system, messages, timeout=30.0)
+            else:
+                raw = _openai_chat(info["model"], system, messages, timeout=30.0)
+            parsed = _extract_json(raw) or {}
+            decision = str(parsed.get("decision") or "").strip().lower()
+            if decision in AGENT_DECISIONS:
+                selector = parsed.get("selector")
+                return {
+                    "decision": decision,
+                    "say": str(parsed.get("say") or "").strip()[:200],
+                    "selector": selector[:200] if isinstance(selector, str) else "",
+                    "mode": "model",
+                }
+        except Exception:  # noqa: BLE001 — агент не должен ломать запуск
+            pass
+    return _agent_offline(meta, snapshot)
 
 
 # ------------------------------------------------------------------ точка входа

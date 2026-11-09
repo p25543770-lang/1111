@@ -28,6 +28,7 @@
     start_run: "ЗАПУСК",
     stop_run: "СТОП",
     set_retry: "ПОВТОР",
+    set_agent: "ИИ-АГЕНТ",
     open_panel: "РАЗДЕЛ",
   };
 
@@ -55,6 +56,12 @@
         wait_ms: (document.getElementById("optRetryWait") || {}).value || "",
         stop_on_change: !!(document.getElementById("optRetryStop") || {}).checked,
         selector: (document.getElementById("optRetrySelector") || {}).value || "",
+      },
+      agent: {
+        enabled: !!(document.getElementById("optAgent") || {}).checked,
+        max_attempts: (document.getElementById("optAgentMax") || {}).value || "",
+        wait_ms: (document.getElementById("optAgentWait") || {}).value || "",
+        goal: (document.getElementById("optAgentGoal") || {}).value || "",
       },
     };
   }
@@ -212,6 +219,29 @@
           document.getElementById("optRetryMax").value +
           " попыток, остановка при изменении — " +
           (document.getElementById("optRetryStop").checked ? "да" : "нет"),
+      };
+    },
+
+    async set_agent(a) {
+      const enabled = a.enabled !== false;
+      const box = document.getElementById("optAgent");
+      box.checked = enabled;
+      if (a.max_attempts) document.getElementById("optAgentMax").value = a.max_attempts;
+      if (a.wait_ms) document.getElementById("optAgentWait").value = a.wait_ms;
+      if (a.goal !== undefined) document.getElementById("optAgentGoal").value = a.goal || "";
+      if (enabled) document.getElementById("optRetry").checked = false;
+      if (typeof saveLocal === "function") saveLocal();
+      return {
+        ok: true,
+        note:
+          "ИИ-агент " +
+          (enabled ? "включён" : "выключен") +
+          (enabled
+            ? ": до " +
+              document.getElementById("optAgentMax").value +
+              " попыток, решения принимает " +
+              (lastStatus && lastStatus.label ? lastStatus.label : "локальная логика")
+            : ""),
       };
     },
 

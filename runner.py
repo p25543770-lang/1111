@@ -29,9 +29,54 @@ SHOTS_DIR = BASE_DIR / "screenshots"
 
 DEFAULT_TIMEOUT = 15000
 
+# Снимок страницы для ИИ-агента: URL, заголовок, видимый текст и интерактивные элементы.
+AGENT_SNAPSHOT_JS = r"""
+() => {
+  const visible = (el) => {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+  };
+  const textOf = (el) => ((el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '') + '')
+    .replace(/\s+/g, ' ').trim();
+  const css = (el) => {
+    if (el.id) return '#' + CSS.escape(el.id);
+    const name = el.getAttribute('name');
+    const tag = el.tagName.toLowerCase();
+    if (name) return tag + '[name="' + name.replace(/"/g, '\\"') + '"]';
+    return '';
+  };
+  const nodes = Array.from(document.querySelectorAll(
+    'button, a, input, select, textarea, [role=button]'
+  )).filter(visible);
+  const elements = nodes.slice(0, 24).map((el) => ({
+    tag: el.tagName.toLowerCase(),
+    type: el.getAttribute('type') || '',
+    text: textOf(el).slice(0, 60),
+    selector: css(el),
+  }));
+  const body = document.body ? document.body.innerText : '';
+  return {
+    url: location.href,
+    title: document.title,
+    text: body.replace(/\n{3,}/g, '\n\n').slice(0, 1800),
+    fullText: body,
+    elements: elements,
+  };
+}
+"""
+
 
 class Stopped(Exception):
     """Пользователь нажал «Стоп»."""
+
+
+class AgentStop(Exception):
+    """ИИ-агент решил остановить весь запуск."""
+
+    def __init__(self, say: str = "") -> None:
+        super().__init__(say)
+        self.say = say
 
 
 def launch_options(headless: bool, slow_mo: int = 0) -> dict[str, Any]:
@@ -165,6 +210,10 @@ class Runner:
         retry_wait = max(0.1, int(config.get("retry_wait_ms") or 1500) / 1000)
         retry_stop = bool(config.get("retry_stop_on_change", True))
         retry_selector = (config.get("retry_selector") or "").strip()
+        agent = bool(config.get("agent_enabled", False))
+        agent_max = max(1, min(20, int(config.get("agent_max") or 4)))
+        agent_wait = max(0.2, int(config.get("agent_wait_ms") or retry_wait * 1000) / 1000)
+        agent_goal = (config.get("agent_goal") or "").strip()[:300]
         steps = config.get("steps") or []
         pre_steps = config.get("pre_steps") or []
 
@@ -176,11 +225,31 @@ class Runner:
         self._set_state("running")
         self.log(f"Старт. Строк к обработке: {self.total}")
         self.log(f"Браузер: {'без окна (headless)' if headless else 'с окном'}")
-        if retry_until:
+        if retry_until and not agent:
             self.log(
                 f"Повтор до изменения: до {retry_max} попыток, ожидание {int(retry_wait * 1000)} мс, "
                 f"сравнение: {retry_selector or 'вся страница'}"
             )
+
+        agent_info: dict[str, Any] = {}
+        if agent:
+            try:
+                import ai
+
+                agent_info = ai.status()
+            except Exception:  # noqa: BLE001
+                agent_info = {"mode": "offline", "label": "встроенная логика"}
+            self.log(
+                f"ИИ-агент: до {agent_max} попыток, ожидание {int(agent_wait * 1000)} мс, "
+                f"решения: {agent_info.get('label') or 'встроенная логика'}",
+                "ok" if agent_info.get("mode") in {"ollama", "openai"} else "info",
+            )
+            if agent_goal:
+                self.log(f"  цель: {agent_goal}")
+            if agent_info.get("mode") not in {"ollama", "openai"}:
+                self.log("  локальная модель не найдена — работают встроенные правила решений", "warn")
+            if retry_until:
+                self.log("  повтор до изменения не используется: попытки ведёт агент")
 
         try:
             with sync_playwright() as p:
@@ -233,6 +302,32 @@ class Runner:
                     self.emit({"type": "progress", "done": processed, "total": self.total, "row": num})
                     brief = self._brief(headers, row)
                     self.log(f"Строка {num}/{len(rows)}: {brief}")
+
+                    if agent:
+                        outcome = self._agent_row(
+                            page,
+                            steps,
+                            headers,
+                            row,
+                            timeout,
+                            context,
+                            num,
+                            url,
+                            agent_max,
+                            agent_wait,
+                            agent_goal,
+                            agent_info,
+                            reload_each,
+                            shoot,
+                            stop_on_error,
+                        )
+                        if outcome == "next":
+                            processed += 1
+                            self.done = processed
+                        else:
+                            failed += 1
+                        time.sleep(max(0, wait_after))
+                        continue
 
                     attempts = retry_max if retry_until else repeat
                     changed_here = False
@@ -304,6 +399,9 @@ class Runner:
                     self.log(f"Готово. Обработано строк: {processed}", "ok")
                     self._set_state("done")
                 browser.close()
+        except AgentStop as exc:
+            self.log(f"ИИ-агент остановил запуск: {exc.say or 'результат достигнут'}", "ok")
+            self._set_state("done")
         except Stopped:
             self.log("Остановлено пользователем", "warn")
             self._set_state("stopped")
@@ -397,6 +495,209 @@ class Runner:
 
             if delay:
                 self._sleep(delay / 1000)
+
+    # ---------- ИИ-агент ----------
+
+    def _agent_row(
+        self,
+        page: Any,
+        steps: list[dict[str, Any]],
+        headers: list[str],
+        row: list[str],
+        timeout: int,
+        context: Any,
+        num: int,
+        url: str,
+        agent_max: int,
+        agent_wait: float,
+        agent_goal: str,
+        agent_info: dict[str, Any],
+        reload_each: bool,
+        shoot: bool,
+        stop_on_error: bool,
+    ) -> str:
+        """Ведёт одну строку: ИИ после каждой попытки решает, что делать."""
+        import ai
+
+        attempt = 0
+        last = ""
+        submit_selector = ""
+        while attempt < agent_max:
+            if self._stop.is_set():
+                raise Stopped()
+            attempt += 1
+            submit_only = last == "submit"
+
+            if attempt > 1 and (last == "reload" or reload_each):
+                self.log("  перезагружаю страницу перед повтором")
+                page.goto(url, wait_until="domcontentloaded")
+
+            before = self._agent_snapshot(page).get("fingerprint") or ""
+
+            try:
+                if submit_only:
+                    self.log("  ИИ: повторная отправка без ввода")
+                    clicked = (
+                        self._agent_click(page, submit_selector, "отправка")
+                        if submit_selector
+                        else False
+                    )
+                    if not clicked:
+                        auto = self._agent_find(
+                            page,
+                            ["отправ", "сохран", "submit", "send", "готово", "далее"],
+                            "submit",
+                        )
+                        clicked = self._agent_click(page, auto, "отправка") if auto else False
+                    if not clicked:
+                        self.log("  ИИ: кнопка отправки не найдена — выполняю шаги заново", "warn")
+                        self._exec_steps(page, steps, headers, row, timeout, context)
+                else:
+                    self._exec_steps(page, steps, headers, row, timeout, context)
+            except Stopped:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                self.log(f"  ошибка: {self._short(exc)}", "error")
+                if shoot:
+                    self._screenshot(page, num)
+                if stop_on_error:
+                    raise
+                return "fail"
+
+            self._sleep(agent_wait)
+            snapshot = self._agent_snapshot(page)
+            after = snapshot.get("fingerprint") or ""
+            changed = bool(before and after and before != after)
+            meta = {
+                "goal": agent_goal,
+                "row": self._brief(headers, row),
+                "attempt": attempt,
+                "max_attempts": agent_max,
+                "changed": changed,
+                "url": snapshot.get("url") or url,
+            }
+            decision = self._agent_decide(meta, snapshot, agent_info)
+            kind = decision["decision"]
+            say = decision.get("say") or ""
+            self.log(
+                f"  ИИ ({attempt}/{agent_max}): {ai.AGENT_LABELS.get(kind, kind)}"
+                + (f" — {say}" if say else ""),
+                "ok" if kind == "next" else "info",
+            )
+            selector = (decision.get("selector") or "").strip()
+
+            if kind == "next":
+                return "next"
+            if kind == "stop":
+                raise AgentStop(say or "результат достигнут")
+            if kind == "fail":
+                self.log("  строка не поддалась — перехожу к следующей", "warn")
+                if shoot:
+                    self._screenshot(page, num)
+                return "fail"
+
+            submit_selector = selector
+            if kind == "clear":
+                clicked = self._agent_click(page, selector, "очистка") if selector else False
+                if not clicked:
+                    auto = self._agent_find(page, ["очист", "сброс", "reset", "clear"], "clear")
+                    clicked = self._agent_click(page, auto, "очистка") if auto else False
+                if not clicked:
+                    self.log("  ИИ: кнопка очистки не найдена — повторяю шаги", "warn")
+                self._sleep(0.3)
+                last = "clear"
+            elif kind == "submit":
+                last = "submit"
+            elif kind == "reload":
+                last = "reload"
+            else:
+                last = "repeat"
+
+        self.log(f"  за {agent_max} попыток результат не достигнут", "warn")
+        if shoot:
+            self._screenshot(page, num)
+        return "fail"
+
+    def _agent_decide(
+        self,
+        meta: dict[str, Any],
+        snapshot: dict[str, Any],
+        info: dict[str, Any],
+    ) -> dict[str, Any]:
+        import ai
+
+        try:
+            decision = ai.agent_decide(meta, snapshot, info=info or None)
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"    ИИ не ответил ({self._short(exc)}) — решаю встроенными правилами", "warn")
+            decision = ai.agent_decide(meta, snapshot, info={"mode": "offline"})
+        if not isinstance(decision, dict):
+            decision = {}
+        if decision.get("decision") not in ai.AGENT_DECISIONS:
+            decision = {"decision": "repeat", "say": "повторяю", "selector": ""}
+        return decision
+
+    def _agent_snapshot(self, page: Any) -> dict[str, Any]:
+        """Снимок страницы: URL, заголовок, текст, элементы и отпечаток для сравнения."""
+        try:
+            data = page.evaluate(AGENT_SNAPSHOT_JS) or {}
+        except Exception:  # noqa: BLE001
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        url = str(data.get("url") or getattr(page, "url", "") or "")
+        full_text = str(data.get("fullText") or "")
+        fingerprint = hashlib.sha1(
+            f"{url}\n{full_text}".encode("utf-8", "ignore")
+        ).hexdigest()
+        elements = data.get("elements")
+        return {
+            "url": url,
+            "title": str(data.get("title") or "")[:200],
+            "text": str(data.get("text") or "")[:1800],
+            "elements": elements if isinstance(elements, list) else [],
+            "fingerprint": fingerprint,
+        }
+
+    def _agent_click(self, page: Any, selector: str, what: str) -> bool:
+        selector = (selector or "").strip()
+        if not selector:
+            return False
+        try:
+            locator = page.locator(selector).first
+            if locator.count() == 0:
+                return False
+            locator.click(timeout=8000)
+            self.log(f"    ИИ: {what} → {selector}")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"    ИИ: не удалось нажать «{what}» ({self._short(exc)})", "warn")
+            return False
+
+    @staticmethod
+    def _agent_find(page: Any, words: list[str], key: str) -> str:
+        """Ищет кнопку по тексту и помечает её, возвращая безопасный селектор."""
+        try:
+            selector = page.evaluate(
+                """([key, words]) => {
+                    const nodes = Array.from(document.querySelectorAll(
+                      'button, a, input[type=submit], input[type=button], [role=button]'
+                    ));
+                    for (const el of nodes) {
+                      const text = ((el.innerText || el.value || '') + ' ' +
+                        (el.getAttribute('aria-label') || '')).toLowerCase();
+                      if (words.some((w) => text.includes(w))) {
+                        el.setAttribute('data-vv-agent', key);
+                        return '[data-vv-agent="' + key + '"]';
+                      }
+                    }
+                    return '';
+                }""",
+                [key, words],
+            )
+            return str(selector or "")
+        except Exception:  # noqa: BLE001
+            return ""
 
     # ---------- мелочи ----------
 

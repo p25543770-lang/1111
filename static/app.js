@@ -624,6 +624,10 @@ function collectConfig() {
     retry_wait_ms: Math.max(100, Number(el("optRetryWait").value) || 1500),
     retry_stop_on_change: el("optRetryStop").checked,
     retry_selector: el("optRetrySelector").value.trim(),
+    agent_enabled: el("optAgent").checked,
+    agent_max: Math.max(1, Number(el("optAgentMax").value) || 4),
+    agent_wait_ms: Math.max(200, Number(el("optAgentWait").value) || 1500),
+    agent_goal: el("optAgentGoal").value.trim(),
     start_row: Math.max(0, (Number(el("optStart").value) || 1) - 1),
     steps: state.steps.map(clean),
     pre_steps: state.preSteps.map(clean),
@@ -762,6 +766,10 @@ function saveLocal() {
       retryWait: el("optRetryWait").value,
       retryStop: el("optRetryStop").checked,
       retrySelector: el("optRetrySelector").value,
+      agent: el("optAgent").checked,
+      agentMax: el("optAgentMax").value,
+      agentWait: el("optAgentWait").value,
+      agentGoal: el("optAgentGoal").value,
     },
   };
   try { localStorage.setItem("autoform", JSON.stringify(data)); } catch { /* переполнение */ }
@@ -791,6 +799,10 @@ function loadLocal() {
       if (d.opts.retryWait != null) el("optRetryWait").value = d.opts.retryWait;
       el("optRetryStop").checked = d.opts.retryStop !== false;
       if (d.opts.retrySelector != null) el("optRetrySelector").value = d.opts.retrySelector;
+      el("optAgent").checked = !!d.opts.agent;
+      if (d.opts.agentMax != null) el("optAgentMax").value = d.opts.agentMax;
+      if (d.opts.agentWait != null) el("optAgentWait").value = d.opts.agentWait;
+      if (d.opts.agentGoal != null) el("optAgentGoal").value = d.opts.agentGoal;
     }
   } catch { /* повреждённое хранилище */ }
 }
@@ -900,6 +912,10 @@ function applyConfig(cfg) {
   el("optRetryWait").value = cfg.retry_wait_ms ?? 1500;
   el("optRetryStop").checked = cfg.retry_stop_on_change !== false;
   el("optRetrySelector").value = cfg.retry_selector || "";
+  el("optAgent").checked = cfg.agent_enabled === true;
+  el("optAgentMax").value = cfg.agent_max ?? 4;
+  el("optAgentWait").value = cfg.agent_wait_ms ?? 1500;
+  el("optAgentGoal").value = cfg.agent_goal || "";
   renderSteps();
   saveLocal();
 }
@@ -944,9 +960,19 @@ el("url").oninput = () => saveLocal();
 el("thumb").onclick = thumbClick;
 el("thumb").addEventListener("wheel", thumbWheel, { passive: false });
 ["optHeadless", "optReload", "optWait", "optRepeat", "optStart", "optStopOnError", "optShot",
-  "optRetry", "optRetryMax", "optRetryWait", "optRetryStop", "optRetrySelector"].forEach((id) => {
+  "optRetryMax", "optRetryWait", "optRetryStop", "optRetrySelector",
+  "optAgentMax", "optAgentWait", "optAgentGoal"].forEach((id) => {
   el(id).onchange = saveLocal;
 });
+// «Повтор до изменения» и «ИИ-агент» взаимоисключающие: попытки ведёт кто-то один.
+el("optRetry").onchange = () => {
+  if (el("optRetry").checked) el("optAgent").checked = false;
+  saveLocal();
+};
+el("optAgent").onchange = () => {
+  if (el("optAgent").checked) el("optRetry").checked = false;
+  saveLocal();
+};
 
 // невидимый чекбокс: показывать окно браузера при выборе полей.
 // По умолчанию сайт открывается только внутри приложения (headless).
