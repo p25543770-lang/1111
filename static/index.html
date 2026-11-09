@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>АвтоВвод — автоматическое заполнение сайта по списку</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">⌨</span>
+    <div>
+      <h1>АвтоВвод</h1>
+      <p class="muted">Открывает сайт и по очереди вводит данные из списка в нужные поля</p>
+    </div>
+  </div>
+  <div class="head-actions">
+    <button class="ghost" id="btnSave">Сохранить настройки</button>
+    <button class="ghost" id="btnLoad">Загрузить</button>
+  </div>
+</header>
+
+<main>
+  <!-- 1. Сайт -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">1</span>
+      <h2>Сайт</h2>
+    </div>
+    <div class="row">
+      <input id="url" type="text" placeholder="https://example.com/forma" autocomplete="off">
+      <button class="primary" id="btnOpenSite">Открыть сайт</button>
+      <button class="ghost" id="btnDemo" title="Заполнить всё на встроенной демо-форме">Демо-пример</button>
+    </div>
+    <p class="hint">
+      Нажмите <b>«Открыть сайт»</b> — ниже появится страница. Затем <b>«Выбирать поля на сайте»</b>
+      и щёлкайте по полям прямо на этом превью: они станут шагами автоматизации.
+      Колесо мыши прокручивает страницу.
+    </p>
+    <div class="row wrap">
+      <button class="ghost" id="btnPick" disabled>Выбирать поля на сайте</button>
+      <button class="ghost" id="btnPickDone" disabled>Закончить выбор</button>
+      <button class="ghost" id="btnShot" disabled>Обновить страницу</button>
+      <span class="badge" id="siteState">браузер не открыт</span>
+    </div>
+    <div class="thumb-wrap hidden" id="thumbWrap">
+      <div class="thumb-frame">
+        <img id="thumb" alt="Страница сайта">
+        <div class="pick-hint hidden" id="pickHint">режим выбора: кликните по полю</div>
+      </div>
+      <div class="thumb-cap muted" id="thumbCap"></div>
+    </div>
+  </section>
+
+  <!-- 2. Данные -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">2</span>
+      <h2>Данные из списка</h2>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="paste">Вставить из Excel</button>
+      <button class="tab" data-tab="file">Загрузить файл</button>
+      <button class="tab" data-tab="manual">Ввести вручную</button>
+    </div>
+
+    <div class="tab-body" id="tab-paste">
+      <textarea id="paste" rows="8" spellcheck="false"
+        placeholder="Скопируйте из Excel/Google Таблиц и вставьте сюда.&#10;Первая строка — названия колонок.&#10;&#10;Имя	Телефон	Город&#10;Иван	+79990000001	Москва"></textarea>
+      <div class="row wrap">
+        <button class="primary" id="btnParse">Разобрать</button>
+        <span class="muted" id="pasteInfo"></span>
+        <label class="chk" title="Если снять галочку, колонки назовутся «Колонка 1, 2, …»">
+          <input type="checkbox" id="hasHeader" checked> первая строка — заголовки
+        </label>
+      </div>
+      <p class="hint">Поддерживается вставка прямо из Excel/Google Таблиц (табуляция) и CSV с запятыми или <b>;</b>.</p>
+    </div>
+
+    <div class="tab-body hidden" id="tab-file">
+      <input type="file" id="file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+      <p class="hint">CSV, TSV, TXT или XLSX. Кодировка определяется автоматически (UTF-8 / Windows-1251).</p>
+    </div>
+
+    <div class="tab-body hidden" id="tab-manual">
+      <div class="row">
+        <input id="manualHeaders" type="text" placeholder="Колонки через запятую: Имя, Телефон, Город (необязательно)">
+      </div>
+      <p class="hint">Можно не задавать колонки — вводите строки через запятую или табуляцию, колонки создадутся сами.</p>
+      <textarea id="manual" rows="8" spellcheck="false"
+        placeholder="Иван, +79990000001, Москва&#10;Пётр, +79990000002, Казань"></textarea>
+      <div class="row">
+        <button class="primary" id="btnManualParse">Разобрать</button>
+        <span class="muted" id="manualInfo"></span>
+      </div>
+    </div>
+
+    <div class="table-wrap hidden" id="tableWrap">
+      <div class="table-head">
+        <span id="tableInfo" class="muted"></span>
+        <span class="muted">щёлкните по заголовку колонки, чтобы выбрать её для шага</span>
+      </div>
+      <div class="scroll"><table id="dataTable"></table></div>
+    </div>
+  </section>
+
+  <!-- 3. Шаги -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">3</span>
+      <h2>Что и куда вводить</h2>
+      <div class="spacer"></div>
+      <button class="ghost" id="btnAddStep">+ Шаг</button>
+      <button class="ghost" id="btnAddPre">+ Перед строками</button>
+    </div>
+
+    <p class="hint" id="stepsHint">
+      Каждый шаг — это поле на сайте и значение из колонки таблицы.
+      Порядок шагов = порядок действий браузера.
+    </p>
+
+    <table class="steps" id="stepsTable">
+      <thead>
+        <tr>
+          <th style="width:34px">#</th>
+          <th>Поле на сайте (селектор)</th>
+          <th style="width:190px">Значение</th>
+          <th>Откуда брать / текст</th>
+          <th style="width:170px">Действие</th>
+          <th style="width:80px">Пауза</th>
+          <th style="width:34px"></th>
+        </tr>
+      </thead>
+      <tbody id="stepsBody"></tbody>
+    </table>
+
+    <details class="pre">
+      <summary>Подготовительные шаги (выполняются один раз до первой строки)</summary>
+      <p class="hint">Например: клик «Войти», ввод логина и пароля, переход на нужную страницу.</p>
+      <table class="steps">
+        <tbody id="preBody"></tbody>
+      </table>
+      <button class="ghost" id="btnAddPre2">+ Подготовительный шаг</button>
+    </details>
+
+    <div class="row wrap run-opts">
+      <label class="chk"><input type="checkbox" id="optHeadless" checked> без окна браузера</label>
+      <label class="chk"><input type="checkbox" id="optReload"> перезагружать страницу для каждой строки</label>
+      <label class="chk"><input type="checkbox" id="optStopOnError" checked> останавливаться при ошибке</label>
+      <label class="chk"><input type="checkbox" id="optShot" checked> снимок экрана при ошибке</label>
+      <label class="inline">Пауза после строки, мс <input type="number" id="optWait" value="500" min="0" step="100"></label>
+      <label class="inline">Повторов на строку <input type="number" id="optRepeat" value="1" min="1" step="1"></label>
+      <label class="inline">Начать со строки <input type="number" id="optStart" value="1" min="1" step="1"></label>
+    </div>
+  </section>
+
+  <!-- 4. Запуск -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">4</span>
+      <h2>Запуск</h2>
+      <div class="spacer"></div>
+      <button class="primary big" id="btnStart">▶ Запустить</button>
+      <button class="danger" id="btnStop" disabled>■ Стоп</button>
+    </div>
+    <div class="progress"><div class="bar" id="bar"></div></div>
+    <div class="row wrap">
+      <span class="badge" id="runState">ожидание</span>
+      <span class="muted" id="runCount"></span>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="modalTitle">Настройки</h3>
+      <button class="ghost" id="modalClose">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
