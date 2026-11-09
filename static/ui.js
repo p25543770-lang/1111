@@ -8,8 +8,9 @@
     data: "ДАННЫЕ",
     steps: "ШАГИ",
     run: "ЗАПУСК",
+    ai: "ЛОКАЛЬНЫЙ ИИ",
   };
-  const ORDER = ["site", "data", "steps", "run"];
+  const ORDER = ["site", "data", "steps", "run", "ai"];
   const STORE_KEY = "autoform.panel";
 
   const navButtons = Array.from(document.querySelectorAll(".nav-item"));
@@ -39,6 +40,9 @@
     btn.addEventListener("click", () => activate(btn.dataset.panel));
   });
 
+  // мостик для ИИ-ассистента: переключение разделов по действию из чата
+  window.__vv = { activate: (name) => activate(name), current: () => current };
+
   window.addEventListener("hashchange", () => {
     const name = (location.hash || "").replace("#", "");
     if (PANELS[name] && name !== current) activate(name, { scroll: false });
@@ -46,7 +50,7 @@
 
   document.addEventListener("keydown", (e) => {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
-    const i = ["1", "2", "3", "4"].indexOf(e.key);
+    const i = ["1", "2", "3", "4", "5"].indexOf(e.key);
     if (i === -1) return;
     e.preventDefault();
     activate(ORDER[i]);
@@ -148,6 +152,18 @@
     else if (t.indexOf("сайт открыт") === 0) counters.site.textContent = "ON";
     else counters.site.textContent = "—";
   });
+
+  // индикатор ИИ в навигации: ON — есть локальная модель, OFF — встроенный режим
+  const aiCount = document.getElementById("countAi");
+  const aiBadge = document.getElementById("aiState");
+  if (aiCount && aiBadge) {
+    const syncAi = () => {
+      const text = (aiBadge.textContent || "").toLowerCase();
+      aiCount.textContent = text.indexOf("ollama") === 0 || text.indexOf("сервер") !== -1 ? "ON" : "OFF";
+    };
+    new MutationObserver(syncAi).observe(aiBadge, { childList: true, characterData: true, subtree: true });
+    syncAi();
+  }
 
   /* ------------------------------------------------ быстрые действия */
 

@@ -54,6 +54,15 @@
         <span class="nav-count" id="countRun">0%</span>
         <span class="nav-mark"></span>
       </button>
+      <button class="nav-item" data-panel="ai" type="button">
+        <span class="nav-idx">05</span>
+        <span class="nav-text">
+          <span class="nav-label">ИИ</span>
+          <span class="nav-sub">локальный чат</span>
+        </span>
+        <span class="nav-count" id="countAi">—</span>
+        <span class="nav-mark"></span>
+      </button>
     </nav>
 
     <div class="side-foot">
@@ -482,6 +491,118 @@
         </div>
       </section>
 
+
+      <!-- ======================================================= 05 ИИ -->
+      <section class="panel" id="panel-ai" data-panel="ai">
+        <div class="panel-art">
+          <svg viewBox="0 0 1200 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <linearGradient id="aiGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#151515"/><stop offset="1" stop-color="#060606"/>
+              </linearGradient>
+              <radialGradient id="aiGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="#ffffff" stop-opacity=".2"/>
+                <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="1200" height="320" fill="url(#aiGrad)"/>
+            <ellipse cx="600" cy="160" rx="420" ry="190" fill="url(#aiGlow)"/>
+            <g fill="none" stroke="#ffffff" stroke-opacity=".1">
+              <path d="M0 80H1200M0 250H1200M150 0V320M1050 0V320"/>
+            </g>
+            <rect x="286" y="94" width="268" height="132" fill="#0a0a0a" stroke="#ffffff" stroke-opacity=".38"/>
+            <path d="M330 226v22l28-22z" fill="#0a0a0a" stroke="#ffffff" stroke-opacity=".38"/>
+            <g stroke="#ffffff" stroke-opacity=".28">
+              <path d="M318 132h120M318 156h200M318 180h150"/>
+            </g>
+            <g fill="#ffffff" fill-opacity=".55">
+              <circle cx="318" cy="206" r="3"/><circle cx="334" cy="206" r="3"/><circle cx="350" cy="206" r="3"/>
+            </g>
+            <g fill="none" stroke="#ffffff" stroke-opacity=".22">
+              <path d="M620 110a58 58 0 0 1 0 100"/>
+              <path d="M660 90a92 92 0 0 1 0 140"/>
+              <path d="M700 70a126 126 0 0 1 0 180"/>
+            </g>
+            <circle cx="600" cy="160" r="9" fill="#ffffff" fill-opacity=".85"/>
+            <g fill="none" stroke="#ffffff" stroke-opacity=".16" stroke-dasharray="2 6">
+              <path d="M554 160H474M620 250H700M620 70H700"/>
+            </g>
+            <g fill="#ffffff" fill-opacity=".4">
+              <circle cx="452" cy="160" r="4"/><circle cx="716" cy="250" r="4"/><circle cx="716" cy="70" r="4"/>
+            </g>
+            <g fill="#ffffff" fill-opacity=".24" font-family="monospace" font-size="11" letter-spacing="3">
+              <text x="880" y="120">LOCAL</text>
+              <text x="880" y="142">NO CLOUD</text>
+              <text x="880" y="164">ON DEVICE</text>
+            </g>
+            <g stroke="#ffffff" stroke-opacity=".14">
+              <path d="M880 88H1080"/>
+            </g>
+          </svg>
+          <span class="art-tag">05 / ИИ</span>
+        </div>
+
+        <div class="panel-intro">
+          <div class="panel-meta">
+            <span>ОФЛАЙН</span><i>·</i><span>OLLAMA / LM STUDIO</span><i>·</i><span>ВАШЕ УСТРОЙСТВО</span>
+          </div>
+          <h2 class="panel-title">ЛОКАЛЬНЫЙ ИИ <span class="dim">АССИСТЕНТ</span></h2>
+          <p class="panel-lede">
+            Понимает команды и сам управляет приложением: подставляет адрес сайта, разбирает
+            таблицу, добавляет шаги, запускает и останавливает ввод. Запросы уходят только
+            на вашу машину — облака здесь нет.
+          </p>
+        </div>
+
+        <div class="panel-body">
+          <div class="block">
+            <div class="block-head">
+              <span class="block-idx">01</span>
+              <h3>Модель</h3>
+              <span class="block-line"></span>
+              <span class="badge" id="aiState">проверяю…</span>
+              <button class="ghost small" id="aiRefresh" type="button">Обновить</button>
+            </div>
+            <p class="hint" id="aiHint">
+              Ищу локальную модель на <b>127.0.0.1:11434</b> (Ollama). Если её нет, работает
+              встроенный офлайн-режим — без интернета и без установки.
+            </p>
+            <div class="row wrap ai-chips">
+              <button class="ghost small" type="button" data-ai-prompt="загрузи демо и запусти">Демо + запуск</button>
+              <button class="ghost small" type="button" data-ai-prompt="сколько строк и шагов?">Показать статус</button>
+              <button class="ghost small" type="button" data-ai-prompt="очисти шаги">Очистить шаги</button>
+              <button class="ghost small" type="button" data-ai-prompt="что ты умеешь?">Помощь</button>
+            </div>
+          </div>
+
+          <div class="block">
+            <div class="block-head">
+              <span class="block-idx">02</span>
+              <h3>Диалог</h3>
+              <span class="block-line"></span>
+              <span class="mono-note">НЕ ПОКИДАЕТ УСТРОЙСТВО</span>
+            </div>
+
+            <div class="chat" id="chatLog" aria-live="polite">
+              <div class="chat-empty" id="chatEmpty">
+                <div class="chat-empty-mark">⌁</div>
+                <p>Спросите что-нибудь или дайте команду: «загрузи демо», «открой https://…»,
+                «сколько строк?», «запусти».</p>
+              </div>
+            </div>
+
+            <form class="chat-form" id="chatForm">
+              <textarea id="chatInput" rows="2" spellcheck="false"
+                placeholder="Например: открой https://example.com/form и запусти"></textarea>
+              <div class="chat-actions">
+                <span class="chat-note">ENTER — ОТПРАВИТЬ · SHIFT+ENTER — ПЕРЕНОС</span>
+                <button class="primary" id="chatSend" type="submit">Отправить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <footer class="page-foot">
         <span>АВТОВВОД · ЛОКАЛЬНЫЙ ИНСТРУМЕНТ АВТОМАТИЗАЦИИ</span>
         <span class="page-foot-right">ДАННЫЕ НЕ ПОКИДАЮТ УСТРОЙСТВО</span>
@@ -502,5 +623,6 @@
 
 <script src="/app.js"></script>
 <script src="/ui.js"></script>
+<script src="/ai.js"></script>
 </body>
 </html>

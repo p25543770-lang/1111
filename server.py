@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import ai as local_ai
 from picker import picker
 from runner import runner
 
@@ -399,6 +400,25 @@ def delete_config(name: str) -> dict[str, Any]:
 def _safe(name: str) -> str:
     cleaned = re.sub(r"[^\w\-. ]+", "_", name, flags=re.UNICODE).strip(" .")
     return cleaned[:80] or "config"
+
+
+# ---------------------------------------------------------------- локальный ИИ
+
+class AiChatRequest(BaseModel):
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.get("/api/ai/status")
+def ai_status() -> dict[str, Any]:
+    """Есть ли локальная модель (Ollama / LM Studio)."""
+    return local_ai.status()
+
+
+@app.post("/api/ai/chat")
+def ai_chat(payload: AiChatRequest) -> dict[str, Any]:
+    """Ответ локального ассистента + действия для интерфейса."""
+    return local_ai.chat(payload.messages, payload.context)
 
 
 # ---------------------------------------------------------------- демо-страница
