@@ -94,7 +94,64 @@ def open_window() -> bool:
     return True
 
 
+def selftest(target: str | None = None) -> int:
+    """Проверка собранного приложения: сервер, статика, Chromium, pywebview."""
+    import json
+    import tempfile
+    import urllib.request
+
+    result: dict[str, object] = {"frozen": FROZEN}
+    ok = True
+
+    try:
+        import webview
+
+        result["webview"] = getattr(webview, "__version__", "ok")
+    except Exception as exc:  # noqa: BLE001
+        result["webview"] = f"error: {exc}"
+        ok = False
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as pw:
+            result["chromium"] = pw.chromium.executable_path
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content("<h1 id='t'>ok</h1>")
+            result["page"] = page.text_content("#t")
+            browser.close()
+    except Exception as exc:  # noqa: BLE001
+        result["playwright"] = f"error: {exc}"
+        ok = False
+
+    try:
+        if not port_open(PORT):
+            start_server()
+        result["server"] = wait_ready(45)
+        with urllib.request.urlopen(f"{URL}/", timeout=10) as resp:
+            body = resp.read(400).decode("utf-8", "ignore")
+        result["static"] = "<!DOCTYPE html>" in body
+    except Exception as exc:  # noqa: BLE001
+        result["http"] = f"error: {exc}"
+
+    ok = bool(ok and result.get("server") and result.get("static"))
+    result["ok"] = ok
+
+    path = Path(target) if target else Path(tempfile.gettempdir()) / "autovvod-selftest.json"
+    try:
+        path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+    return 0 if ok else 1
+
+
 def main() -> None:
+    if "--selftest" in sys.argv:
+        index = sys.argv.index("--selftest")
+        target = sys.argv[index + 1] if len(sys.argv) > index + 1 else None
+        raise SystemExit(selftest(target))
+
     log("---- запуск ----")
     if port_open(PORT):
         log("порт занят: использую уже запущенный сервер")

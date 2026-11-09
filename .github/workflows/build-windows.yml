@@ -37,6 +37,18 @@ jobs:
       - name: Сборка exe
         run: pyinstaller --noconfirm --clean autovvod.spec
 
+      - name: Проверка собранного приложения
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "selftest.json"
+          & ".\dist\AutoVvod\AutoVvod.exe" --selftest $out
+          $code = $LASTEXITCODE
+          if (Test-Path $out) { Get-Content $out }
+          if ($code -ne 0) {
+            Write-Error "Автопроверка сборки не прошла (код $code)"
+            exit 1
+          }
+
       - name: Упаковка
         shell: pwsh
         run: |
